@@ -1,0 +1,810 @@
+#!/usr/bin/perl -CSDA
+
+use utf8; 
+use Modern::Perl qw{2017}; 
+no warnings qw{uninitialized numeric}; 
+no autovivification; 
+use Data::Dumper; 
+use Config; 
+use Scalar::Util qw{reftype looks_like_number}; 
+use Test::More; 
+use POSIX qw{strftime}; 
+use Time::Local; 
+
+require './libr_data'; 
+
+
+
+ #      #  ####  ###### #####  #   # 
+ #      # #    #     #  #    #  # #  
+ #      # #         #   #####    #   
+ #      # #        #    #    #   #   
+ #      # #    #  #     #    #   #   
+ ###### #  ####  ###### #####    #   
+ 
+for (
+	[1, '0.0', 0, '0.0'], 
+	[1, '+1.0', 1, '+1.0'], 
+	[1, '-1.0', -1, '-1.0'], 
+	[1, '+0.00000000000001', 1e-14, '+0.00000000000001'], 
+	[1, '-0.00000000000001', -1e-14, '-0.00000000000001'], 
+	[1, '+99999999999999.5', 99999999999999.5, '+99999999999999.5'], 
+	[1, '-99999999999999.7', -99999999999999.7, '-99999999999999.7'], 
+	[1, '-99999999999999.8', -99999999999999.8, '-99999999999999.8'], 
+	[1, '-99999999999999.9', -99999999999999.9, '-99999999999999.9'], 
+	[1, '+99999999999999.9', 99999999999999.9, '+99999999999999.9'], 
+	[1, '+99999999999999.8', 99999999999999.8, '+99999999999999.8'], 
+	[1, '+12345678901234.5', 12345678901234.5, '+12345678901234.5'], 
+	[0, '+123456789012345.1', 'za długa liczba'], 
+	[0, '+1234567.890123451', 'za długa liczba'], 
+	[0, '+.123456789012345', 'nieprawidłowa liczba'], 
+	[0, '+.0000000000000001', 'nieprawidłowa liczba'], 
+	[1, "# asdfasdfa\n0.0asdfasdf\n", 0, '0.0'], 
+	[0, '.aaa', 'nieprawidłowa liczba "." "aaa"', 'sama kropka'], 
+	[0, '1', 'nieprawidłowa liczba "1"', 'bez znaku, kropki'], 
+	[0, '1.0', 'nieprawidłowa liczba "1.0"', 'bez znaku'], 
+	[0, '-1', 'nieprawidłowa liczba "-1"', 'bez kropki'], 
+	[0, '-1..9', 'nieprawidłowa liczba "-1." ".9"', 'bez cyfr po kropce'], 
+	[0, '-.1.9', 'nieprawidłowa liczba "-.1" ".9"', 'bez cyfr przed kropką'], 
+	[0, '-..9', 'nieprawidłowa liczba "-." ".9"', 'bez cyfr w ogóle'], 
+	[0, '..9', 'nieprawidłowa liczba "." ".9"', 'sama kropka'], 
+	[0, '-#..9', 'nieprawidłowa liczba "-"', 'sam znak'], 
+	[0, '+..9', 'nieprawidłowa liczba "+."', 'znak i kropka'], 
+	[1, '+1.9-2.0', 1.9, '+1.9'], 
+	[0, '+1.90.0-2.0', 'nieprawidłowa liczba "+1.90"', 'zero na końcu'], 
+	[1, '+1.8+0.0-2.0', 1.8, '+1.8'], 
+	[0, '+0.0-2.0', 'nieprawidłowa liczba "+0.0"', 'zero z plusem'], 
+	[0, '-0.0-2.0', 'nieprawidłowa liczba "-0.0"', 'zero z minusem'], 
+	[0, '-0.0000-2.0', 'nieprawidłowa liczba "-0.0000"', 'zero ze znakiem i dużo cyfr'], 
+	[1, '0.0-2.0', 0, '0.0'], 
+	[0, '000.0-2.0', 'nieprawidłowa liczba "000.0"', 'za dużo zer na początku'], 
+	[0, '1000.9-2.0', 'nieprawidłowa liczba "1000.9"', 'bez znaku'], 
+	[0, '+10009-2.0', 'nieprawidłowa liczba "+10009"', 'bez kropki'], 
+	[0, '.9-2.0', 'nieprawidłowa liczba ".9"', 'bez znaku, kropka na początku'], 
+	[0, '+.8-2.0', 'nieprawidłowa liczba "+.8"', 'bez cyfr na początku'], 
+	[0, '+1.-2.0', 'nieprawidłowa liczba "+1."', 'bez cyfr na końcu'], 
+	[0, '+1..2.0', 'nieprawidłowa liczba "+1."', 'bez cyfr na końcu'], 
+	[0, '+1.10.2.0', 'nieprawidłowa liczba "+1.10"', 'zero na końcu'], 
+	[0, '+001.2.2.0', 'nieprawidłowa liczba "+001.2"', 'zero na początku'], 
+	[0, '+00.12.2.0', 'nieprawidłowa liczba "+00.12"', 'zero na początku'], 
+	[1, '+0.12.2.0', .12, '+0.12'], 
+	[0, '+1.200.2.0', 'nieprawidłowa liczba "+1.200"', 'zero na końcu'], 
+	[0, '+12.00.2.0', 'nieprawidłowa liczba "+12.00"', 'zero na końcu'], 
+	[1, '+12.0.2.0', 12, '+12.0'], 
+	[1, '+12.345.2.0', 12.345, '+12.345'], 
+	[0, '.asdf asdf asd fasfd asasdfl;jeq ;lrkq j', 'nieprawidłowa liczba "." "asdf asdf asd fasfd asasdfl;jeq ;lr', 'nieprawidłowa liczba, wypisuje więcej'],
+) { 
+	if ($$_[0]) { 
+		my $x = numb_extr(\$$_[1]); 
+		my $t = numb_repr($x); 
+		my $i = "\"$$_[1]\" --> $$_[2] --> \"$$_[3]\""; $i =~ s/\s+/ /g;  
+		ok( $x == $$_[2] && $$t eq $$_[3], $i); 
+		ok(okay_numb($x), "tak good_numb $x"); 
+	} else { 
+		my $i = "\"$$_[1]\" --> $$_[2]" . ($$_[3] ? " ($$_[3])" : ""); $i =~ s/\s+/ /g;  
+		eval { numb_extr(\$$_[1]); };  
+		like $@, qr/\Q$$_[2]\E/, $i; 
+	}
+}
+
+ok(okay_numb(  '+99999999999999.5'), "ok numb..5"); 
+ok(okay_numb(  '-99999999999999.7'), "ok numb ..6"); 
+ok(okay_numb(  '-99999999999999.8'), "ok numb ..7"); 
+ok(okay_numb(  '-99999999999999.9'), "okay numb ..8"); 
+ok(okay_numb(  '+99999999999999.9'), "okay numb .. 9"); 
+ok(okay_numb(   +99999999999999.5), "ok numb liczba..5"); 
+ok(okay_numb(   -99999999999999.7), "ok numb liczba ..6"); 
+ok(okay_numb(   -99999999999999.8), "ok numb liczba ..7"); 
+ok(okay_numb(   -99999999999999.9), "okay numb liczba ..8"); 
+ok(okay_numb(   +99999999999999.9), "okay numb liczba .. 9"); 
+ok(okay_numb(   +0.00000000000001 * 0.1), "okay numb maleńka 1"); 
+ok(okay_numb(   +0.0000000000001 * 0.1), "okay numb maleńka 2"); 
+ok(okay_numb(   +0.00000000001 * 0.1), "okay numb maleńka 3"); 
+ok(okay_numb(   +99999999999999.9 + 0.00000000000001), "okay duża plus mała"); 
+ok(! okay_numb( +99999999999999.9 + 0.010), "okay numb duża plus mała 01"); 
+ok(! okay_numb( +99999999999999.9 + 0.009), "okay numb duża plus mała 009"); 
+ok(! okay_numb( +99999999999999.9 + 0.008), "okay numb duża plus mała 008"); 
+ok(okay_numb(   +99999999999999.9 + 0.007), "okay numb duża plus mała 007"); 
+ok(okay_numb(   +99999999999999.9 + 0.006), "okay numb duża plus mała 006"); 
+ok(okay_numb(   +99999999999999.9 + 0.001), "okay numb duża plus mała 001"); 
+ok(! okay_numb(  99999999999999.94), "duża niedobra, ale zaokrągliło w dół 4"); 
+ok(! okay_numb(  99999999999999.95), "duża niedobra, ale zaokrągliło w dół 5"); 
+ok(! okay_numb(  99999999999999.951), "duża niedobra 51"); 
+ok(! okay_numb(  99999999999999.96), "duża niedobra 6"); 
+ok(! okay_numb(  99999999999999.99), "duża niedobra 9"); 
+
+ok(! okay_name(  99999999999999.99), "zła nazwa 99"); 
+ok(! okay_name( "alfa beta"), "zła nazwa spacja"); 
+ok(! okay_name( "1beta"), "zła nazwa cyfr na pocz"); 
+ok(! okay_name( "_beta"), "zła nazwa podkr pocz"); 
+ok(! okay_name( "be__ta"), "zła nazwa dwa podkr"); 
+ok(! okay_name( "beta_"), "zła nazwa podkr na końcu"); 
+ok(! okay_name( "be!ta"), "zła nazwa inny znak"); 
+
+ok(  okay_text(q{"be!ta"}), "tekst: ok "); 
+ok(! okay_text(q{ "be!ta"}), "tekst: spacja na pocz "); 
+ok(! okay_text(q{"be!ta" }), "tekst: spacja na koń "); 
+ok(  okay_text(q{"be\\ta"}), "tekst: ukośnik"); 
+ok(! okay_text(q{"be\zta"}), "tekst: zły escap"); 
+ok(  okay_text(q{"b'\"e\t\n{}\"t\\\\a"}), "tekst: różne escap"); 
+ok(! okay_text("be\tta"), "tekst: tabulator"); 
+ok(! okay_text("be\nta"), "tekst: new line"); 
+ok(! okay_text("be\vta"), "tekst: vertic tab"); 
+
+ok(  okay_parm({ alfa => 2, beta => '"aldfa dfsaa fd"' }), "ok parm"); 
+ok(! okay_parm({ alfa => 2, "be ta" => '"aldfa dfsaa fd"' }), "ok parm zły klucz"); 
+ok(! okay_parm({ ixi => { alfa => 2, "beta" => 999999999999999999999999.9 }}), "ok parm zła wart"); 
+ok(  okay_parm({ ixi => { alfa => 2, "beta" => "alfa", asdf => { a => 5 }}}), "ok parm zagnieżdone"); 
+ok(! okay_parm({ ixi => { alfa => 2, "beta" => "alfa", asdf => { a => 5e90 }}}), "ok parm zagnieżdone złe"); 
+ok(  okay_parm({ ixi => 1}), "ok parm jeden elem"); 
+ok(  okay_parm({}), "ok puste"); 
+eval {  okay_parm() }; like $@, qr{nieprawidłowa referencja}, "brak arg"; 
+eval {  okay_parm([]) }; like $@, qr{nieprawidłowa referencja}, "zła ref do okej parm"; 
+
+ok(  okay_data(   -99999999999999.9), "okay data: liczba ..8"); 
+ok(! okay_data(   -99999999999999999.9), "okay data: duża liczba"); 
+ok(! okay_data( ), "okay data: brak arg "); 
+ok(! okay_data( 'alfa ba' ), "okay data: zły string "); 
+ok(  okay_data({ al => 1, be => 2 }), "okay data: lista para "); 
+
+eval { numb_repr(2e50) }; like $@, qr{\Qliczba spoza zakresu "2e+50"\E}, 'liczba spoza zakresu e50'; 
+eval { numb_repr(99999999999999.94) }; like $@, qr{\Qliczba spoza zakresu "99999999999999.9"\E}, 'liczba spoza zakresu 999..99.94'; 
+eval { numb_repr(99999999999999.95) }; like $@, qr{\Qliczba spoza zakresu "100000000000000"\E}, 'liczba spoza zakresu 99.99.95'; 
+eval { numb_repr(-99999999999999.94) }; like $@, qr{\Qliczba spoza zakresu "-99999999999999.9"\E}, 'liczba spoza zakresu -999..99.94'; 
+eval { numb_repr(-99999999999999.95) }; like $@, qr{\Qliczba spoza zakresu "-100000000000000"\E}, 'liczba spoza zakresu -99.99.95'; 
+
+for (
+	["-98.7", [[1, "-98.7"], [2, "-98.7"], [3, "-98.7"], [15, "-98.7"]]],
+	["+12.34", [[1, "+12.3"], [2, "+12.3"], [3, "+12.3"], [4, "+12.34"], [5, "+12.34"], [6, "+12.34"]]],
+	["+1.23", [[1, "+1.2"], [2, "+1.2"], [3, "+1.23"], [4, "+1.23"], [10, "+1.23"], [15, "+1.23"]]],
+	["-0.123", [[1, "-0.1"], [2, "-0.12"], [3, "-0.123"], [4, "-0.123"], [10, "-0.123"], [15, "-0.123"]]],
+	["+0.0987", [[1, "+0.1"], [2, "+0.099"], [3, "+0.0987"], [4, "+0.0987"], [10, "+0.0987"], [15, "+0.0987"]]],
+	["-0.004679", [[1, "-0.005"], [2, "-0.0047"], [3, "-0.00468"], [4, "-0.004679"], [10, "-0.004679"], [15, "-0.004679"]]],
+	  #123456789.012345
+	["-0.00000123456789", [
+			[1, "-0.000001"],
+			[3, "-0.00000123"],
+			[5, "-0.0000012346"],
+			[6, "-0.00000123457"],
+			[13, "-0.00000123456789"],
+			[14, "-0.00000123456789"],
+			[15, "-0.00000123456789"],
+		],
+	],
+	["+9.87654321198765", [
+			[1, "+9.9"],
+			[2, "+9.9"],
+			[3, "+9.88"],
+			[4, "+9.877"],
+			      #1234567890.12345
+			[13, "+9.876543211988"],
+			[14, "+9.8765432119877"],
+			[15, "+9.87654321198765"],
+		],
+	],
+	  #1234567890.12345
+	["+987654321.198765", [
+			[1, "+987654321.2"],
+			[2, "+987654321.2"],
+			[3, "+987654321.2"],
+			[13, "+987654321.1988"],
+			[14, "+987654321.19877"],
+			[15, "+987654321.198765"],
+		],
+	],
+	  #1234567890.12345
+	["+987654321.123123", [
+			[1, "+987654321.1"],
+			[2, "+987654321.1"],
+			[3, "+987654321.1"],
+			[13, "+987654321.1231"],
+			[14, "+987654321.12312"],
+			[15, "+987654321.123123"],
+		],
+	],
+	  #1234567890.12345
+	["+9.99999999999999", [
+			[1, "+10.0"],
+			[2, "+10.0"],
+			[14, "+10.0"],
+	                      #1234567890.12345
+			[15, "+9.99999999999999"],
+		],
+	],
+	  #1234567890.12345
+	["+9.99999999999998", [
+			[1, "+10.0"],
+			[2, "+10.0"],
+			[14, "+10.0"],
+	                      #1234567890.12345
+			[15, "+9.99999999999998"],
+		],
+	],
+	["+9.99999999999994", [
+			[1, "+10.0"],
+			[2, "+10.0"],
+			[13, "+10.0"],
+			[14, "+9.9999999999999"],
+	                      #1234567890.12345
+			[15, "+9.99999999999994"],
+		],
+	],
+	  #1234567890.12345
+	["+0.00000000000001", [
+			[1, "+0.00000000000001"],
+			[2, "+0.00000000000001"],
+			[3, "+0.00000000000001"],
+			[14, "+0.00000000000001"],
+	                      #1234567890.12345
+			[15, "+0.00000000000001"],
+		],
+	],
+	  #1234567890.12345
+	["+0.00000000000091", [
+			[1, "+0.0000000000009"],
+			[2, "+0.00000000000091"],
+			[3, "+0.00000000000091"],
+			[14, "+0.00000000000091"],
+	                      #1234567890.12345
+			[15, "+0.00000000000091"],
+		],
+	],
+	  #1234567890.12345
+	["+0.00000000000391", [
+			[1, "+0.000000000004"],
+			[2, "+0.0000000000039"],
+			[3, "+0.00000000000391"],
+			[4, "+0.00000000000391"],
+			[14, "+0.00000000000391"],
+	                      #1234567890.12345
+			[15, "+0.00000000000391"],
+		],
+	],
+	  #1234567890.12345
+	["-1.00000000000001", [
+			[1, "-1.0"],
+			[2, "-1.0"],
+			[14, "-1.0"],
+	                      #1234567890.12345
+			[15, "-1.00000000000001"],
+		],
+	],
+	  #1234567890.12345
+	["-1.98700000000091", [
+			[1, "-2.0"],
+			[2, "-2.0"],
+			[3, "-1.99"],
+			[4, "-1.987"],
+			[12, "-1.987"],
+			[13, "-1.987000000001"],
+			[14, "-1.9870000000009"],
+	                      #1234567890.12345
+			[15, "-1.98700000000091"],
+		],
+	],
+	  #1.23456789012345
+	["-1.00000098700294", [
+			[1, "-1.0"],
+			[2, "-1.0"],
+			[3, "-1.0"],
+	                     #1.23456789012345
+			[8, "-1.000001"],
+			[9, "-1.00000099"],
+			[10, "-1.000000987"],
+			[11, "-1.000000987"],
+			[12, "-1.000000987"],
+			[13, "-1.000000987003"],
+			[14, "-1.0000009870029"],
+			[15, "-1.00000098700294"],
+		],
+	],
+	["-1.00000098700295", [
+			[12, "-1.000000987"],
+			[13, "-1.000000987003"],
+			[14, "-1.000000987003"],
+			[15, "-1.00000098700295"],
+		],
+	],
+	["+1.857", [[3, "+1.86"]]], 
+	["+5.295", [[3, "+5.29"], [2, "+5.3"]]], 
+) { 
+	my $pt = $$_[0]; # perl tekstowo
+	my $pn = 0 + $pt; # perl numerycznie
+	my $tn = numb_extr(\$pt); # tytan numerycznie
+	my $tt = ${numb_repr($tn)}; # tytan tekstowo
+	for (@{$$_[1]}) { 
+		my ($pr, $ex) = @$_; # dokładność, oczekiwany wynik tekstowo
+		my $rp = ${numb_repr($pn, $pr)}; # reprezenacja wg precyzji 
+		is(
+			"$pt --$pr--> $rp", 
+			"$tt --$pr--> $ex", 
+			"numb_repr $pt z dokładnością $pr jest $rp"); 
+	}
+}; 
+eval { numb_repr(1.23, 0) }; like $@, qr{nieprawidłowa dokładność "0"}, 'zerowa dokładność'; 
+eval { numb_repr(1.23, 5.2) }; like $@, qr{nieprawidłowa dokładność "5.2"}, 'niecałkowita dokładność'; 
+eval { numb_repr(1.23, 8/3) }; like $@, qr{nieprawidłowa dokładność "2.66666666666667"}, 'niecałkowita dokładność'; 
+eval { numb_repr(1.23, 16) }; like $@, qr{nieprawidłowa dokładność "16"}, 'za duża dokładność'; 
+
+
+
+ ##### ###### #    #  ####  ##### #   # 
+   #   #      #   #  #        #    # #  
+   #   #####  ####    ####    #     #   
+   #   #      #  #        #   #     #   
+   #   #      #   #  #    #   #     #   
+   #   ###### #    #  ####    #     #   
+
+for (
+	[1, '"alfa"', 'alfa', 'prosty tekst'], 
+	[1, '"ąćęłńóśźżĄĆĘŁŃÓŚŹŻ"', 'ąćęłńóśźżĄĆĘŁŃÓŚŹŻ', 'polskie literki'], 
+	[1, '"al\\"f\\\\a\\nitab\\txxx"', "al\"f\\a
+itab	xxx", 'escape chars ok'], 
+	[0, "\"unprintable\rx\bx\0x\"", "nieprawidłowy tekst \"#x#x#x\\\")\" at ", 'escape chars błąd'], 
+	[1, '""', '', 'pusty tekst'], 
+	[0, "\"nowa\nlinia\"", "wartość parametru \"a\" była spodziewana", 'nowa linia wprost'], 
+	[0, "\"tabu\tlator\"", "wartość parametru \"a\" była spodziewana", 'tabulator wprost'], 
+	[1, "\"tabu\\tlator\"", "tabu\tlator", 'tabulator esc ok'], 
+	[1, "\"now\\nlinia\"", "now\nlinia", 'nowa linia esc ok'], 
+) { 
+	if ($$_[0]) { 
+		my $p = para_extr(\"(a $$_[1])"); 
+		my $t = unci($p->{a}); 
+		my $i = "$$_[1] --> $$_[2]" . ($$_[3] ? " ($$_[3])" : ""); $i =~ s/\s+/ /g;  
+		is $t, $$_[2], $i; 
+	} else { 
+		eval { para_extr(\"(a $$_[1])") }; 
+		like $@, qr/\Q$$_[2]\E/, $$_[3]; 
+	}
+}
+
+is cite('alfa"beta\gamma'), '"alfa\"beta\\\\gamma"', 'zacytować'; 
+is unci('"alfa\"beta\\\\gamma"'), 'alfa"beta\gamma', 'odcytować'; 
+is cite(''), '""', 'cytować pusty'; 
+is unci('""'), '', 'odctyować pusty'; 
+is cite('"'), '"\\""', 'cytować cudzysłów'; 
+is unci('"\\""'), '"', 'odcytować cudzysłów'; 
+is cite('\\'), '"\\\\"', 'cytować ukośnik'; 
+is unci('"\\\\"'), '\\', 'odcytować ukośnik'; 
+is cite("new\nline"), '"new\nline"', 'zacyt z nową linią'; 
+is unci("\"new\\nline\""), "new\nline", 'odcyt z nową linią'; 
+is cite("tab\tulator"), '"tab\tulator"', 'zacyt z nową linią'; 
+is unci("\"tab\\tulator\""), "tab\tulator", 'odcyt z nową linią'; 
+
+# cite jest używane do zgłaszania błędów, ale jeśli samo napotka na
+# niedrukowalne znaki to błąd jest o niedrukowalnych
+eval { para_extr(\"( n 0.0 t \"asdf\"asdf\" )") }; like $@, qr{wartość parametru "asdf" była spodziewana "\\" \)" at}, 'cudysłów w tekście'; 
+eval { para_extr(\"( n 0.0 t \"asdf\\asdf\" )") }; like $@, qr{wartość parametru "t" była spodziewana "\\"asdf\\\\asdf\\" \)" at}, 'backslash w tekście'; 
+eval { para_extr(\"( n 0.0 t \"asdf\nasdf\" )") }; like $@, qr{wartość parametru "t" była spodziewana "\\"asdf\\nasdf\\" \)" at }, 'nowa linia w tekście'; 
+eval { para_extr(\"( n 0.0 t \"asdf\tasdf\" )") }; like $@, qr{wartość parametru "t" była spodziewana "\\"asdf\\tasdf\\" \)" at }, 'tabulator w tekście'; 
+eval { para_extr(\"( n 0.0 t \"asdf\ba\fsdf\" )") }; like $@, qr{nieprawidłowy tekst \"\#a\#sdf\\\" \)\" at }, 'inne znaki w tekście'; 
+
+# znaki specjalne w tekście
+{ 
+	my $t; 
+	$t .= "$_=>" . chr($_) . ",\n" for 9, 10, 32..126, 160..511; 
+	my $c = cite($t); 
+	is unci($c), $t, 'specjalne cite, unci'; 
+	eval { para_extr(\"(a $c)") }; is $@, "", 'zacytowane ze znakami cntrl'; 
+	my $r = 
+		'(a "9=>\t,\n10=>\n,\n' . 
+		'32=> ,\n33=>!,\n34=>\",\n35=>#,\n36=>$,\n37=>%,\n38=>&,\n39=>\',\n40=>(,\n41=>),\n42=>*,\n43=>+,\n44=>,,\n45=>-,\n46=>.,\n47=>/,\n48=>0,\n49=>1,\n50=>2,\n51=>3,' . 
+		'\n52=>4,\n53=>5,\n54=>6,\n55=>7,\n56=>8,\n57=>9,\n58=>:,\n59=>;,\n60=><,\n61=>=,\n62=>>,\n63=>?,\n64=>@,\n65=>A,\n66=>B,\n67=>C,\n68=>D,\n69=>E,\n70=>F,\n71=>G,\n72=>H,\n73=>I,\n74=>J,\n75=>K,\n76=>L,\n77=>M,\n78=>N,\n79=>O,\n80=>P,\n81=>Q,\n82=>R,\n83=>S,\n84=>T,\n85=>U,\n86=>V,\n87=>W,\n88=>X,\n89=>Y,\n90=>Z,\n91=>[,\n92=>\\\\,\n93=>],\n94=>^,\n95=>_,\n96=>`,\n97=>a,\n98=>b,\n99=>c,\n100=>d,\n101=>e,\n102=>f,\n103=>g,\n104=>h,\n105=>i,\n106=>j,\n107=>k,\n108=>l,\n109=>m,\n110=>n,\n111=>o,' . 
+		'\n112=>p,\n113=>q,\n114=>r,\n115=>s,\n116=>t,\n117=>u,\n118=>v,\n119=>w,\n120=>x,\n121=>y,\n122=>z,\n123=>{,\n124=>|,\n125=>},\n126=>~,\n' . 
+		'160=> ,\n161=>¡,\n162=>¢,\n163=>£,\n164=>¤,\n165=>¥,\n166=>¦,\n167=>§,\n168=>¨,\n169=>©,\n170=>ª,\n171=>«,\n172=>¬,\n173=>­,\n174=>®,\n175=>¯,\n176=>°,\n177=>±,\n178=>²,\n179=>³,\n180=>´,\n181=>µ,\n182=>¶,\n183=>·,\n184=>¸,\n185=>¹,\n186=>º,\n187=>»,\n188=>¼,\n189=>½,\n190=>¾,\n191=>¿,\n192=>À,\n193=>Á,\n194=>Â,\n195=>Ã,\n196=>Ä,\n197=>Å,\n198=>Æ,\n199=>Ç,\n200=>È,\n201=>É,\n202=>Ê,\n203=>Ë,\n204=>Ì,\n205=>Í,\n206=>Î,\n207=>Ï,\n208=>Ð,\n209=>Ñ,\n210=>Ò,' . 
+		'\n211=>Ó,\n212=>Ô,\n213=>Õ,\n214=>Ö,\n215=>×,\n216=>Ø,\n217=>Ù,\n218=>Ú,\n219=>Û,\n220=>Ü,\n221=>Ý,\n222=>Þ,\n223=>ß,\n224=>à,\n225=>á,\n226=>â,\n227=>ã,\n228=>ä,\n229=>å,\n230=>æ,\n231=>ç,\n232=>è,\n233=>é,\n234=>ê,\n235=>ë,\n236=>ì,\n237=>í,\n238=>î,\n239=>ï,\n240=>ð,\n241=>ñ,\n242=>ò,\n243=>ó,\n244=>ô,\n245=>õ,\n246=>ö,\n247=>÷,\n248=>ø,\n249=>ù,\n250=>ú,\n251=>û,\n252=>ü,\n253=>ý,\n254=>þ,\n255=>ÿ,\n256=>Ā,\n257=>ā,\n258=>Ă,\n259=>ă,\n260=>Ą,\n261=>ą,\n262=>Ć,\n263=>ć,\n264=>Ĉ,\n265=>ĉ,\n266=>Ċ,\n267=>ċ,' . 
+		'\n268=>Č,\n269=>č,\n270=>Ď,\n271=>ď,\n272=>Đ,\n273=>đ,\n274=>Ē,\n275=>ē,\n276=>Ĕ,\n277=>ĕ,\n278=>Ė,\n279=>ė,\n280=>Ę,\n281=>ę,\n282=>Ě,\n283=>ě,\n284=>Ĝ,\n285=>ĝ,\n286=>Ğ,\n287=>ğ,\n288=>Ġ,\n289=>ġ,\n290=>Ģ,\n291=>ģ,\n292=>Ĥ,\n293=>ĥ,\n294=>Ħ,\n295=>ħ,\n296=>Ĩ,\n297=>ĩ,\n298=>Ī,\n299=>ī,\n300=>Ĭ,\n301=>ĭ,\n302=>Į,\n303=>į,\n304=>İ,\n305=>ı,\n306=>Ĳ,\n307=>ĳ,\n308=>Ĵ,\n309=>ĵ,\n310=>Ķ,\n311=>ķ,\n312=>ĸ,\n313=>Ĺ,\n314=>ĺ,\n315=>Ļ,\n316=>ļ,\n317=>Ľ,\n318=>ľ,\n319=>Ŀ,\n320=>ŀ,\n321=>Ł,\n322=>ł,\n323=>Ń,\n324=>ń,' . 
+		'\n325=>Ņ,\n326=>ņ,\n327=>Ň,\n328=>ň,\n329=>ŉ,\n330=>Ŋ,\n331=>ŋ,\n332=>Ō,\n333=>ō,\n334=>Ŏ,\n335=>ŏ,\n336=>Ő,\n337=>ő,\n338=>Œ,\n339=>œ,\n340=>Ŕ,\n341=>ŕ,\n342=>Ŗ,\n343=>ŗ,\n344=>Ř,\n345=>ř,\n346=>Ś,\n347=>ś,\n348=>Ŝ,\n349=>ŝ,\n350=>Ş,\n351=>ş,\n352=>Š,\n353=>š,\n354=>Ţ,\n355=>ţ,\n356=>Ť,\n357=>ť,\n358=>Ŧ,\n359=>ŧ,\n360=>Ũ,\n361=>ũ,\n362=>Ū,\n363=>ū,\n364=>Ŭ,\n365=>ŭ,\n366=>Ů,\n367=>ů,\n368=>Ű,\n369=>ű,\n370=>Ų,\n371=>ų,\n372=>Ŵ,\n373=>ŵ,\n374=>Ŷ,\n375=>ŷ,\n376=>Ÿ,\n377=>Ź,\n378=>ź,\n379=>Ż,\n380=>ż,\n381=>Ž,' . 
+		'\n382=>ž,\n383=>ſ,\n384=>ƀ,\n385=>Ɓ,\n386=>Ƃ,\n387=>ƃ,\n388=>Ƅ,\n389=>ƅ,\n390=>Ɔ,\n391=>Ƈ,\n392=>ƈ,\n393=>Ɖ,\n394=>Ɗ,\n395=>Ƌ,\n396=>ƌ,\n397=>ƍ,\n398=>Ǝ,\n399=>Ə,\n400=>Ɛ,\n401=>Ƒ,\n402=>ƒ,\n403=>Ɠ,\n404=>Ɣ,\n405=>ƕ,\n406=>Ɩ,\n407=>Ɨ,\n408=>Ƙ,\n409=>ƙ,\n410=>ƚ,\n411=>ƛ,\n412=>Ɯ,\n413=>Ɲ,\n414=>ƞ,\n415=>Ɵ,\n416=>Ơ,\n417=>ơ,\n418=>Ƣ,\n419=>ƣ,\n420=>Ƥ,\n421=>ƥ,\n422=>Ʀ,\n423=>Ƨ,\n424=>ƨ,\n425=>Ʃ,\n426=>ƪ,\n427=>ƫ,\n428=>Ƭ,\n429=>ƭ,\n430=>Ʈ,\n431=>Ư,\n432=>ư,\n433=>Ʊ,\n434=>Ʋ,\n435=>Ƴ,\n436=>ƴ,\n437=>Ƶ,\n438=>ƶ,' . 
+		'\n439=>Ʒ,\n440=>Ƹ,\n441=>ƹ,\n442=>ƺ,\n443=>ƻ,\n444=>Ƽ,\n445=>ƽ,\n446=>ƾ,\n447=>ƿ,\n448=>ǀ,\n449=>ǁ,\n450=>ǂ,\n451=>ǃ,\n452=>Ǆ,\n453=>ǅ,\n454=>ǆ,\n455=>Ǉ,\n456=>ǈ,\n457=>ǉ,\n458=>Ǌ,\n459=>ǋ,\n460=>ǌ,\n461=>Ǎ,\n462=>ǎ,\n463=>Ǐ,\n464=>ǐ,\n465=>Ǒ,\n466=>ǒ,\n467=>Ǔ,\n468=>ǔ,\n469=>Ǖ,\n470=>ǖ,\n471=>Ǘ,\n472=>ǘ,\n473=>Ǚ,\n474=>ǚ,\n475=>Ǜ,\n476=>ǜ,\n477=>ǝ,\n478=>Ǟ,\n479=>ǟ,\n480=>Ǡ,\n481=>ǡ,\n482=>Ǣ,\n483=>ǣ,\n484=>Ǥ,\n485=>ǥ,\n486=>Ǧ,\n487=>ǧ,\n488=>Ǩ,\n489=>ǩ,\n490=>Ǫ,\n491=>ǫ,\n492=>Ǭ,\n493=>ǭ,\n494=>Ǯ,\n495=>ǯ,\n496=>ǰ,\n497=>Ǳ,\n498=>ǲ,\n499=>ǳ,\n500=>Ǵ,\n501=>ǵ,\n502=>Ƕ,\n503=>Ƿ,\n504=>Ǹ,\n505=>ǹ,\n506=>Ǻ,\n507=>ǻ,\n508=>Ǽ,\n509=>ǽ,\n510=>Ǿ,\n511=>ǿ,\n")'; 
+	is ${para_repr(para_extr(\"(a $c)"))}, $r, 'wiele poprawnych znaków'; 
+}
+
+{ 
+	my $t; 
+	$t .= "$_=>" . chr($_) . ",\n" for 256..511, 0..255; 
+	eval { cite($t) }; like $@, qr'nieprawidłowy tekst "#,\\n1=>#,\\n2=>#,\\n3=>#,\\n4=>#,\\n5=>#,\\n6=>#,\\n7=>#,\\n8=>#,\\n9=>\\t,\\n10=>\\n,\\n11=>#,\\n12=>#,\\n13=>#,\\n14=>#,\\n15=>#,\\n16=>#,\\n17=>#,\\n18=>#,\\n19=>#,\\n20=>#,\\n21=>#,\\n22=>#,\\n23=>#,\\n24=>#,\\n25=>#,\\n26=>#,\\n27=>#,\\n28=>#,\\n29=>#,\\n30=>#,\\n31=" at', 'nie zacytuje'; 
+}
+
+
+
+
+
+ #####    ##   #####    ##   #    # ###### ##### #####  #   # 
+ #    #  #  #  #    #  #  #  ##  ## #        #   #    #  # #  
+ #    # #    # #    # #    # # ## # #####    #   #    #   #   
+ #####  ###### #####  ###### #    # #        #   #####    #   
+ #      #    # #   #  #    # #    # #        #   #   #    #   
+ #      #    # #    # #    # #    # ######   #   #    #   #   
+
+is_deeply(para_extr(\'(alfa 0.0)'), { alfa => 0 }, 'mała lista parametrów'); 
+
+is_deeply(
+	para_extr(\q{  (alfaąęłń    -20.123      
+			beta "jakaś uwaga, ukośnik \\\\, cudzysłów \", koniec tekstu"  
+			abc cba   ) }),  
+	{ alfaąęłń => -20.123, abc => "cba", beta => q{"jakaś uwaga, ukośnik \\\\, cudzysłów \", koniec tekstu"} }, 
+	'parametry więcej...'
+); 
+
+{ 
+	my $a = "(alfa 0.0)"; 
+	is(${para_repr(para_extr(\$a))}, $a, 'parametr zero'); 
+}
+
+eval { para_extr(\'   ') }; like $@, qr/nawias na początku parametrów był spodziewany/, 'błąd nawias na pocz param'; 
+eval { para_extr(\'( ..   ') }; like $@, qr/nazwa parametru była spodziewana " ..   "/, 'nazwa parametru błąd'; 
+eval { para_extr(\'( n ### ') }; like $@, qr/wartość parametru "n" była spodziewana ""/, 'błąd wart param'; 
+eval { para_extr(\'( n ... ') }; like $@, qr/nieprawidłowa liczba "."/, 'błąd nieliczba'; 
+eval { para_extr(\'( n a! ') }; like $@, qr/nazwa parametru była spodziewana "! "/, 'błąd nienazwa'; 
+eval { para_extr(\'( n "niete ') }; like $@, qr/wartość parametru "n" była spodziewana "\\"niete "/, 'błąd nietekst'; 
+eval { para_extr(\'(alfa beta 0)') }; like ($@, qr/nazwa parametru/, 'zła nazwa parametru'); 
+eval { para_extr(\'(alfa beta ufi )') }; like ($@, qr/wartość parametru/, 'brak wartości parametru'); 
+eval { para_extr(\')') }; like ($@, qr/nawias na początku parametrów/, 'nawias na początku parametrów'); 
+eval { para_extr(\'(       ') }; like ($@, qr/nazwa parametru/, 'niespodziewany koniec wejścia dla parametrów'); 
+
+{ my $t = '(a "" b (c ""))'; is ${para_repr(para_extr(\$t))}, $t, 'zachowuje puste teksty'; }
+
+{
+	my $p = para_extr (\'# komentarz na samym początku 
+		(   # konentarz za nawiasem 
+		Order_Number "PN/123/90"
+		Order_Date (
+			Year "2009"
+			Plus   # k w środk
+			             +19.3
+			Month "12" # komentarz po wartościach
+			Day "24"
+		)
+		Client "Metron Tech"      # komentarz po parametrach
+		Vox "Xov"
+		Client_Data (
+			Name "Metron_Tech"
+			Address # komentarz przed nawiasem 
+				(
+				# koment po nawiasie
+				Państwo_ĄĆĘŁŃÓŚŹŻ_ąćęłńóśźż  
+				
+				"Poland" City "Kraków" Street "Podhalańska 242s"
+				Post (
+					Code 
+					       "34-700"  # koment po wart
+					Name "Poczta Rabka"
+				)
+				More ()
+			)
+			TaxId "7223-1123-132"
+			Remarks "Other name could be \"Metron Technology\"..."
+		)
+		Termin_Narzucony_Z_Góry +2.0
+	)'); 
+	my $d = {
+          Order_Number => '"PN/123/90"',
+          Order_Date => {
+                          Day => '"24"',
+                          Year => '"2009"',
+                          Month => '"12"',
+			  Plus => 19.3
+                        },
+          Vox => '"Xov"',
+          Client_Data => {
+                           Name => '"Metron_Tech"',
+                           Remarks => '"Other name could be \\"Metron Technology\\"..."',
+                           Address => {
+                                        Państwo_ĄĆĘŁŃÓŚŹŻ_ąćęłńóśźż => '"Poland"',
+                                        More => {},
+                                        City => '"Kraków"',
+                                        Post => {
+                                                  Code => '"34-700"',
+                                                  Name => '"Poczta Rabka"'
+                                                },
+                                        Street => '"Podhalańska 242s"'
+                                      },
+                           TaxId => '"7223-1123-132"'
+                         },
+          Client => '"Metron Tech"',
+	  Termin_Narzucony_Z_Góry => 2, 
+        };
+
+	# format druku 
+	is(${para_repr($p)}, '(Client "Metron Tech" Client_Data (Address (City "Kraków" More () Państwo_ĄĆĘŁŃÓŚŹŻ_ąćęłńóśźż "Poland" Post (Code "34-700" Name "Poczta Rabka") Street "Podhalańska 242s") Name "Metron_Tech" Remarks "Other name could be \"Metron Technology\"..." TaxId "7223-1123-132") Order_Date (Day "24" Month "12" Plus +19.3 Year "2009") Order_Number "PN/123/90" Termin_Narzucony_Z_Góry +2.0 Vox "Xov")', 'format parametrów taki jak oczekiwany'); 
+
+	# jedno i drugie powinno być takie samo 
+	is_deeply($p, $d, 'struktura danych w parametrach'); 
+
+
+}
+
+{ 
+	my $p = para_extr(\'(Alfa +3.0 Pusty "" Cu "\\"" Bs "\\\\" Spacje " " Beta Aaa)'); 
+	is ${para_repr($p)}, '(Alfa +3.0 Beta Aaa Bs "\\\\" Cu "\\"" Pusty "" Spacje " ")', "pomijanie pustych parametrów w czytaniu"; 
+	$$p{In}{Ixi} = 0; 
+	$$p{In}{Dixi} = '0'; 
+	$$p{In}{Ubi} = '""'; 
+	$$p{In}{In2}{X} = '""'; 
+	is ${para_repr($p)}, '(Alfa +3.0 Beta Aaa Bs "\\\\" Cu "\\"" In (Dixi 0.0 In2 (X "") Ixi 0.0 Ubi "") Pusty "" Spacje " ")', "nie pomijanie pustych parametrów w pisaniu"; 
+}
+
+
+is(
+	${para_repr(para_extr(\' 
+			# testowanie komentarzy w parametrach 
+		# koment na początku 
+			( # koment po nawiasie
+				a 0.0
+				b 
+					# i w środku między nazwą a nazwa
+						mojanazwa	
+				c 
+					# i w środku między nazwą a liczbą
+						+2.0
+				d 
+					# i w środku między nazwą a tekstem
+						"to jest tekst"
+				# koment pomiędzy parami 
+				e 
+					# przed nawiasem 
+					(  a   #aaa
+					0.0   # zero 
+					b +2.0)
+				# koment przed nawiasem
+			) 
+			# koment na końcu 
+	'))}, 
+	q{(a 0.0 b mojanazwa c +2.0 d "to jest tekst" e (a 0.0 b +2.0))},
+	'komenatarze w parametrach'
+); 
+
+
+
+ #      #  ####  ##### #   # 
+ #      # #        #    # #  
+ #      #  ####    #     #   
+ #      #      #   #     #   
+ #      # #    #   #     #   
+ ###### #  ####    #     #   
+
+is_deeply( list_extr(\'()'),  [], 'pusta lista'); 
+
+eval { list_extr(\'   ') }; like $@, qr/nawias na początku listy był spodziewany "   "/, 'błąd pocz listy'; 
+eval { list_extr(\'( ..   ') }; like $@, qr/nazwa elementu listy była spodziewana " ..   "/, 'błąd nie nazwa'; 
+eval { list_extr(\'( aa..   ') }; like $@, qr/nawias na początku parametrów był spodziewany "..   "/, 'błąd nieparm'; 
+eval { list_extr(\"( aa ()  # koment błąd \n\t\t  ..   ") }; like $@, qr/nazwa elementu listy była spodziewana "..   "/, 'znowu nazwa błąd'; 
+
+{ 
+	my $l = list_extr(\'   # komnentarz
+		(
+			# komentaarz
+ 		Omni	(Qty -45.0 Who "Kowlaski Sp. z o.o" Anum +123.988732)
+ 		Atos	# komentarz
+			(Qty -4.0)   # komentarz
+ 		Pluton	(Znum 0.0 Qty -9.0 When "2009-12-31")
+ 		Helios	(Qty -1.0)
+		# komentarz
+	) # komentarz');  
+	my $d = [ { name => 'Omni', para => { Who => '"Kowlaski Sp. z o.o"', Qty => '-45', Anum => '123.988732' } }, { para => { Qty => '-4' }, name => 'Atos' }, { name => 'Pluton', para => { Qty => '-9', When => '"2009-12-31"', Znum => 0 } }, { name => 'Helios', para => { Qty => '-1' } } ]; 
+
+	# struktura wewnętrzna
+	is_deeply($l, $d, 'struktura listy'); 
+
+	# format wydruku
+	is(${list_repr($l)}, '(
+	Omni (Anum +123.988732 Qty -45.0 Who "Kowlaski Sp. z o.o")
+	Atos (Qty -4.0)
+	Pluton (Qty -9.0 When "2009-12-31" Znum 0.0)
+	Helios (Qty -1.0)
+)
+', 'format wydruku listy'); 
+
+}
+
+
+is ${list_repr(list_extr(\'(a(b+1.0c"alfa")q(b-2.0c(n+8.0z"proba")))'))}, '(
+	a (b +1.0 c "alfa")
+	q (b -2.0 c (n +8.0 z "proba"))
+)
+', 'lista bez spacji'; 
+
+
+
+ #####  #####  ###### ###### #    #   ##   
+ #    # #    #     #  #      #    #  #  #  
+ #    # #    #    #   #####  #    # #    # 
+ #    # #####    #    #      # ## # ###### 
+ #    # #   #   #     #      ##  ## #    # 
+ #####  #    # ###### ###### #    # #    # 
+
+is_deeply(tree_extr(\'()'),  [], 'puste drzewo'); 
+
+eval { tree_extr(\'   ') }; like $@, qr/nawias na początku drzewa był spodziewany "   "/, 'błąd pocz drzewa'; 
+eval { tree_extr(\'( ..   ') }; like $@, qr/nazwa węzła drzewa była spodziewana " ..   "/, 'błąd nie nazwa'; 
+eval { tree_extr(\'( aa..   ') }; like $@, qr/nawias na początku parametrów był spodziewany "..   "/, 'błąd nieparm'; 
+eval { tree_extr(\'( aa () ..   ') }; like $@, qr/nawias na początku drzewa/, 'znowu błąd nawias na pocz drzewa'; 
+eval { tree_extr(\"( aa () \n\t ()  # sadfa \n\t\t # \n  .. xx  ") }; like $@, qr/nazwa węzła drzewa była spodziewana ".. xx  "/, 'znowu nazwa błąd po całości'; 
+
+is_deeply(tree_extr(\'( a () () )'),  [{ name => 'a', para => {}, chil => [], }, ], 'płaskie drzewo'); 
+is_deeply(tree_extr(\'( a () () b () (c () () ))'), [ { para => {}, name => 'a', chil => [] }, { name => 'b', chil => [ { name => 'c', chil => [], para => {} } ], para => {} } ], 'zagnieżdzone drzewo'); 
+is_deeply(tree_extr(\'( a () () b () (c (x x) () c (y y) () ))'), [ { name => 'a', chil => [], para => {} }, { name => 'b', chil => [ { para => { 'x' => 'x' }, chil => [], name => 'c' }, { chil => [], name => 'c', para => { 'y' => 'y' } } ], para => {} } ], 'zaniezdzone z powtórzeniem'); 
+
+{ 
+	my $t = tree_extr(\'   # komnentarz
+		(  ###
+			# komentaarz
+ 		A (Info "this is node A") (
+ 			B  # komentarz
+				(Info "This is node B, parent is A") # komentarza
+				###
+				()
+ 			C (Info "This is node C, has 3 children, parent A") (
+ 				D (X +4.5 Y -5.0) (
+ 				)
+ 				E (X +4.9 Y -9.0) (
+					E1 (parme1 x) ()
+					E2 (parme1 y) ()
+					E2 (parme1 z) ()
+ 				)
+ 				F (X +2.1 Y -12.0) (
+				# fin
+ 				) ## xx
+ 			)
+ 			G (Info "This is child G of node A")()) B # komentarz
+		(Info "This is node B") # komentarz
+		( # komentarz
+ 		)
+ 		A (Info "this is another with name A") (
+ 			X (info "nod x") (
+				P (info "nod P") (
+					Q (info "nod Q") (
+						R (mul +2.0 info "nod R, empty") ()))) Y () ())	
+	) # komentarzi
+	# i koniec');  
+	my $d = [
+          {
+            name => 'A',
+            para => { Info => '"this is node A"' },
+            chil => [
+                        {
+                          name => 'B',
+                          para => { Info => '"This is node B, parent is A"' },
+                          chil => []
+                        },
+                        {
+                          name => 'C', 
+                          para => { Info => '"This is node C, has 3 children, parent A"' },
+                          chil => [
+                                      {
+                                        name => 'D',
+                                        para => { 'Y' => -5, 'X' => '4.5' },
+                                        chil => []
+                                      },
+                                      {
+                                        name => 'E',
+                                        para => { 'Y' => -9, 'X' => '4.9' },
+                                        chil => [
+                                                    {
+                                                      name => 'E1',
+                                                      para => { parme1 => 'x' },
+                                                      chil => [],
+                                                    },
+                                                    {
+                                                      name => 'E2',
+                                                      para => { parme1 => 'y' },
+                                                      chil => [],
+                                                    },
+                                                    {
+                                                      name => 'E2',
+                                                      para => { parme1 => 'z' },
+                                                      chil => [],
+                                                    }
+                                                  ]
+                                      },
+                                      {
+                                        name => 'F',
+                                        para => { 'X' => '2.1', 'Y' => -12 },
+                                        chil => [],
+                                      }
+                                    ],
+                        },
+                        {
+                          name => 'G',
+                          para => { Info => '"This is child G of node A"' },
+                          chil => [],
+                        }
+                      ],
+          },
+          {
+            name => 'B',
+            para => { Info => '"This is node B"' },
+            chil => [],
+          },
+          {
+            name => 'A',
+            para => { Info => '"this is another with name A"' },
+            chil => [
+                        {
+                          name => 'X',
+                          para => { info => '"nod x"' },
+                          chil => [
+                                      {
+                                        name => 'P',
+                                        para => { info => '"nod P"' },
+                                        chil => [
+                                                    {
+                                                      name => 'Q',
+                                                      para => { info => '"nod Q"' },
+                                                      chil => [
+                                                                  { 
+                                                                    name => 'R',
+								    para => { info => '"nod R, empty"', mul => 2 },
+                                                                    chil => [],
+                                                                  }
+                                                                ],
+                                                    }
+                                                  ]
+                                      }
+                                    ]
+                        },
+                        {
+                          name => 'Y',
+                          para => {},
+                          chil => [],
+                        }
+                      ],
+          }
+        ];
+	
+	# struktura wewnętrzna
+	is_deeply($t, $d, 'struktura wewnętrzna drzewa'); 
+
+	# format wydruku
+	is(${tree_repr($t)}, '(
+	A (Info "this is node A") (
+		B (Info "This is node B, parent is A") (
+		)
+		C (Info "This is node C, has 3 children, parent A") (
+			D (X +4.5 Y -5.0) (
+			)
+			E (X +4.9 Y -9.0) (
+				E1 (parme1 x) (
+				)
+				E2 (parme1 y) (
+				)
+				E2 (parme1 z) (
+				)
+			)
+			F (X +2.1 Y -12.0) (
+			)
+		)
+		G (Info "This is child G of node A") (
+		)
+	)
+	B (Info "This is node B") (
+	)
+	A (Info "this is another with name A") (
+		X (info "nod x") (
+			P (info "nod P") (
+				Q (info "nod Q") (
+					R (info "nod R, empty" mul +2.0) (
+					)
+				)
+			)
+		)
+		Y () (
+		)
+	)
+)
+', 'format druku drzewa'); 
+
+
+	# zapis, odczyt
+	my $c = tree_extr(tree_repr($t)); 
+	is_deeply($c, $t, 'zapis i odczyt drzewa'); 
+
+} 
+
+
+
+
+
+done_testing(); 
+

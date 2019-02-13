@@ -1,0 +1,27 @@
+#!/usr/bin/perl -CSDA
+
+use utf8; 
+use strict; 
+use warnings; 
+no warnings qw{uninitialized numeric}; 
+use Carp; 
+use Data::Dumper; 
+
+require './libr_data'; 
+
+my $t = do { local $/; <STDIN> }; 
+defined $t or croak "nie można wczytać danych wejściowych " . cite($!); 
+$t .= " "; chop $t; # Perl Bug 129802
+
+if ($ARGV[0] eq "") { 
+	croak "nie podano typu danych do formatowania"; 
+} elsif ($ARGV[0] eq "para") { 
+	print ${para_repr(para_extr(\$t))}; 
+} elsif ($ARGV[0] eq "list") { 
+	print ${list_repr(list_extr(\$t))}; 
+} elsif ($ARGV[0] eq "tree") { 
+	print ${tree_repr(tree_extr(\$t))}; 
+} else {
+	croak "nieprawidłowy typ danych do formatowania " . cite($ARGV[0]); 
+}
+
