@@ -47,7 +47,7 @@ Invalid __texts__: `"Alfa \' Beta"` (wrong escape sequence), texts that contain 
 
 
 ## Parameters
-help 
+
 __Parameters__ are associative arrays, sets of __name__-__values__, can be nested. __Paramters__ definition
 consists of left paren `(`, list of __name__-__value__ pairs, right parenthesis `)`. __Name__ is as described
 above, and value is __number__, __name__, __text__ or another list of parameters. 
