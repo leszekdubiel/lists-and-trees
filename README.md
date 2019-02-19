@@ -1,4 +1,4 @@
-*** Need help translating this to perl6. I suggest 20 euro for working hour. Please contact leszek at dubiel dot pl ***
+*** Need help translating this to perl6. I will pay for working hours. Please contact leszek at dubiel dot pl first.  ***
 
 # lists-and-trees
 
